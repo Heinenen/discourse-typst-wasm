@@ -1,7 +1,5 @@
 use std::cell::RefMut;
-use std::error::Error;
-use std::fs::File;
-use std::{cell::RefCell, collections::HashMap, path::PathBuf};
+use std::{cell::RefCell, collections::HashMap};
 
 use comemo::Prehashed;
 use typst::diag::{FileError, FileResult};
@@ -59,7 +57,11 @@ impl Sandbox {
     }
 
     pub fn with_source(&self, source: String) -> WithSource<'_> {
-        WithSource { sandbox: self, source: make_source(source), time: get_time() }
+        WithSource {
+            sandbox: self,
+            source: make_source(source),
+            time: get_time(),
+        }
     }
 
     fn file(&self, id: FileId) -> FileResult<RefMut<'_, FileEntry>> {
@@ -78,8 +80,20 @@ pub struct WithSource<'a> {
     time: time::OffsetDateTime,
 }
 fn fonts() -> Vec<Font> {
-    // todo!()
-    Vec::new()
+    vec![
+        &include_bytes!("../fonts/DejaVuSansMono.ttf")[..],
+        &include_bytes!("../fonts/LinLibertine_R.ttf")[..],
+        &include_bytes!("../fonts/NewCM10-Regular.otf")[..],
+        &include_bytes!("../fonts/Roboto-Regular.ttf")[..],
+    ]
+    .into_iter()
+    .flat_map(|entry| {
+        let face_count = ttf_parser::fonts_in_collection(entry).unwrap_or(1);
+        (0..face_count).map(move |face| {
+            Font::new(Bytes::from(entry), face).unwrap_or_else(|| panic!("failed to load font"))
+        })
+    })
+    .collect()
 }
 
 fn make_source(source: String) -> Source {
@@ -87,7 +101,7 @@ fn make_source(source: String) -> Source {
 }
 
 fn get_time() -> time::OffsetDateTime {
-    // TODO
+    // time::OffsetDateTime::now_utc()
     time::OffsetDateTime::UNIX_EPOCH
 }
 

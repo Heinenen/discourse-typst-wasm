@@ -56,7 +56,7 @@ fn render(sandbox: &Sandbox, source: &str) -> Result<String, String> {
 
 #[test]
 fn test() {
-    let input = "hello world!";
+    let input = "#line(length: 100pt)";
 
     let result = render_typst(input);
     println!("{result}");

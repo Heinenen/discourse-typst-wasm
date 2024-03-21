@@ -325,6 +325,7 @@ version = "0.0.0"
 dependencies = [
  "comemo",
  "time",
+ "ttf-parser",
  "typst",
  "typst-svg",
  "wasm-bindgen",

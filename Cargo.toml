@@ -12,6 +12,8 @@ crate-type = ["cdylib"]
 [dependencies]
 comemo = "0.4.0"
 time = "0.3.34"
+# time = { version = "0.3.34", features = ["wasm-bindgen"] }
+ttf-parser = "0.20.0"
 typst = "0.11.0"
 typst-svg = "0.11.0"
 wasm-bindgen = "0.2"
