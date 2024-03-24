@@ -43,7 +43,7 @@ pub struct Sandbox {
 
 impl Sandbox {
     pub fn new() -> Self {
-        let fonts = fonts();
+        let fonts = Self::parse_fonts(font_files());
 
         Self {
             library: Prehashed::new(Library::default()),
@@ -56,12 +56,30 @@ impl Sandbox {
         }
     }
 
+    pub fn set_fonts(&mut self, font_files: Vec<&[u8]>) {
+        let fonts = Self::parse_fonts(font_files);
+        self.book = Prehashed::new(FontBook::from_fonts(&fonts));
+        self.fonts = fonts;
+    }
+
     pub fn with_source(&self, source: String) -> WithSource<'_> {
         WithSource {
             sandbox: self,
             source: make_source(source),
             time: get_time(),
         }
+    }
+
+    fn parse_fonts(font_files: Vec<&[u8]>) -> Vec<Font> {
+        font_files
+            .into_iter()
+            .flat_map(|entry| {
+                let face_count = ttf_parser::fonts_in_collection(entry).unwrap_or(1);
+                (0..face_count).map(move |face| {
+                    Font::new(Bytes::from(entry), face).unwrap_or_else(|| panic!("failed to load font"))
+                })
+            })
+            .collect()
     }
 
     fn file(&self, id: FileId) -> FileResult<RefMut<'_, FileEntry>> {
@@ -79,21 +97,14 @@ pub struct WithSource<'a> {
     source: Source,
     time: time::OffsetDateTime,
 }
-fn fonts() -> Vec<Font> {
+
+fn font_files() -> Vec<&'static [u8]> {
     vec![
         &include_bytes!("../fonts/DejaVuSansMono.ttf")[..],
         &include_bytes!("../fonts/LinLibertine_R.ttf")[..],
         &include_bytes!("../fonts/NewCM10-Regular.otf")[..],
         &include_bytes!("../fonts/Roboto-Regular.ttf")[..],
     ]
-    .into_iter()
-    .flat_map(|entry| {
-        let face_count = ttf_parser::fonts_in_collection(entry).unwrap_or(1);
-        (0..face_count).map(move |face| {
-            Font::new(Bytes::from(entry), face).unwrap_or_else(|| panic!("failed to load font"))
-        })
-    })
-    .collect()
 }
 
 fn make_source(source: String) -> Source {
