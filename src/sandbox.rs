@@ -43,7 +43,7 @@ pub struct Sandbox {
 
 impl Sandbox {
     pub fn new() -> Self {
-        let fonts = Self::parse_fonts(font_files());
+        let fonts = Vec::new();
 
         Self {
             library: Prehashed::new(Library::default()),
@@ -73,10 +73,12 @@ impl Sandbox {
     fn parse_fonts(font_files: Vec<&[u8]>) -> Vec<Font> {
         font_files
             .into_iter()
-            .flat_map(|entry| {
+            .enumerate()
+            .flat_map(|(idx, entry)| {
                 let face_count = ttf_parser::fonts_in_collection(entry).unwrap_or(1);
                 (0..face_count).map(move |face| {
-                    Font::new(Bytes::from(entry), face).unwrap_or_else(|| panic!("failed to load font"))
+                    Font::new(Bytes::from(entry), face)
+                        .unwrap_or_else(|| panic!("failed to load font {idx}"))
                 })
             })
             .collect()
@@ -96,15 +98,6 @@ pub struct WithSource<'a> {
     sandbox: &'a Sandbox,
     source: Source,
     time: time::OffsetDateTime,
-}
-
-fn font_files() -> Vec<&'static [u8]> {
-    vec![
-        &include_bytes!("../fonts/DejaVuSansMono.ttf")[..],
-        &include_bytes!("../fonts/LinLibertine_R.ttf")[..],
-        &include_bytes!("../fonts/NewCM10-Regular.otf")[..],
-        &include_bytes!("../fonts/Roboto-Regular.ttf")[..],
-    ]
 }
 
 fn make_source(source: String) -> Source {
