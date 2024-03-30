@@ -1,15 +1,22 @@
-use std::cell::RefMut;
+use std::io::Read;
+use std::path::PathBuf;
 use std::{cell::RefCell, collections::HashMap};
 
 use comemo::Prehashed;
-use typst::diag::{FileError, FileResult};
+use flate2::read::GzDecoder;
+use js_sys::Uint8Array;
+use tar::Archive;
+use typst::diag::{eco_format, FileError, FileResult, PackageError, PackageResult};
 use typst::foundations::{Bytes, Datetime};
+use typst::syntax::package::PackageSpec;
 use typst::{
     syntax::{FileId, Source},
     text::{Font, FontBook},
     Library,
 };
+use web_sys::{console, XmlHttpRequest, XmlHttpRequestResponseType};
 
+#[derive(Clone)]
 struct FileEntry {
     bytes: Bytes,
     /// This field is filled on demand.
@@ -36,9 +43,8 @@ pub struct Sandbox {
     book: Prehashed<FontBook>,
     fonts: Vec<Font>,
 
-    // cache_directory: PathBuf,
-    // http: todo!(),
     files: RefCell<HashMap<FileId, FileEntry>>,
+    package_files: RefCell<HashMap<(PackageSpec, PathBuf), Vec<u8>>>,
 }
 
 impl Sandbox {
@@ -53,6 +59,9 @@ impl Sandbox {
             // cache_directory: todo!(),
             // http: todo!(),
             files: RefCell::new(HashMap::new()),
+            // packages: RefCell::new(HashMap::new()),
+            // files: HashMap::new(),
+            package_files: RefCell::new(HashMap::new()),
         }
     }
 
@@ -84,13 +93,81 @@ impl Sandbox {
             .collect()
     }
 
-    fn file(&self, id: FileId) -> FileResult<RefMut<'_, FileEntry>> {
-        if let Ok(entry) = RefMut::filter_map(self.files.borrow_mut(), |files| files.get_mut(&id)) {
-            return Ok(entry);
+    fn file(&self, id: FileId) -> FileResult<FileEntry> {
+        if let Some(entry) = self.files.borrow().get(&id) {
+            return Ok(entry.clone());
         }
 
-        // TODO handle packages
-        return Err(FileError::NotFound(id.vpath().as_rootless_path().into()));
+        if let Some(package) = id.package() {
+            self.load_package(package)?;
+
+            let package_files = self.package_files.borrow();
+            let file = package_files
+                .get(&(package.clone(), id.vpath().as_rootless_path().to_path_buf()))
+                .map(|x| FileEntry {
+                    bytes: x[..].into(),
+                    source: None,
+                });
+            if let Some(file) = file {
+                self.files.borrow_mut().insert(id, file.clone());
+                return Ok(file);
+            }
+        }
+        Err(FileError::NotFound(id.vpath().as_rootless_path().into()))
+    }
+
+    fn load_package(&self, package: &PackageSpec) -> PackageResult<()> {
+        if self
+            .package_files
+            .borrow()
+            .contains_key(&(package.clone(), PathBuf::from("typst.toml")))
+        {
+            return Ok(());
+        }
+
+        let url = format!(
+            "https://packages.typst.org/{}/{}-{}.tar.gz",
+            package.namespace, package.name, package.version,
+        );
+        let req = XmlHttpRequest::new().unwrap();
+        req.open_with_async("GET", &url, false).unwrap();
+        req.set_response_type(XmlHttpRequestResponseType::Arraybuffer);
+        req.send().map_err(|e| {
+            console::log_1(&e);
+            PackageError::NetworkFailed(Some(eco_format!(
+                "Failed to send network request! Check console for more info."
+            )))
+        })?;
+
+        // code != 2XX
+        if req.status().unwrap_or_default() / 100 != 2 {
+            return Err(PackageError::NetworkFailed(Some(eco_format!(
+                "{} {}",
+                req.status().unwrap_or_default(),
+                req.status_text().unwrap_or_default()
+            ))));
+        }
+        let tar_gz = Uint8Array::new(&req.response().unwrap()).to_vec();
+        let tar = GzDecoder::new(&tar_gz[..]);
+        let mut archive = Archive::new(tar);
+
+        let malformed = |err: String| PackageError::MalformedArchive(Some(eco_format!("{}", err)));
+        for e in archive.entries().unwrap() {
+            match e {
+                Ok(entry) => {
+                    let path = entry.path().unwrap().to_path_buf();
+                    let bytes = entry
+                        .bytes()
+                        .collect::<Result<_, _>>()
+                        .map_err(|err| malformed(err.to_string()))?;
+                    self.package_files
+                        .borrow_mut()
+                        .insert((package.clone(), path), bytes);
+                }
+                Err(err) => return Err(malformed(err.to_string())),
+            }
+        }
+        Ok(())
     }
 }
 
@@ -105,8 +182,8 @@ fn make_source(source: String) -> Source {
 }
 
 fn get_time() -> time::OffsetDateTime {
-    // time::OffsetDateTime::now_utc()
-    time::OffsetDateTime::UNIX_EPOCH
+    let now = (js_sys::Date::now() / 1000.0) as i64;
+    time::OffsetDateTime::from_unix_timestamp(now).unwrap()
 }
 
 impl WithSource<'_> {

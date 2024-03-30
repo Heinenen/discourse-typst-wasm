@@ -10,7 +10,7 @@ use wasm_bindgen::prelude::*;
 
 lazy_static! {
     static ref SANDBOX: Mutex<Sandbox> = Mutex::new(Sandbox::new());
-}
+}   
 
 #[wasm_bindgen]
 pub fn render_typst(source: &str) -> Vec<String> {
@@ -30,15 +30,6 @@ pub fn set_fonts(font_files: Box<[JsValue]>) {
     let font_files: Vec<&[u8]> = font_files.iter().map(|it| &it[..]).collect();
     let mut sandbox = SANDBOX.lock().unwrap();
     sandbox.set_fonts(font_files);
-}
-
-fn panic_to_string(panic: &dyn std::any::Any) -> String {
-    let inner = panic
-        .downcast_ref::<&'static str>()
-        .copied()
-        .or_else(|| panic.downcast_ref::<String>().map(String::as_str))
-        .unwrap_or("Box<dyn Any>");
-    format!("panicked at '{inner}'")
 }
 
 fn render(sandbox: &Sandbox, source: &str) -> Result<Vec<String>, String> {
